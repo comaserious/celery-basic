@@ -12,5 +12,14 @@ celery_app = Celery(
 @celery_app.task
 def add(x, y):
     time.sleep(10)
-    return x+y
+    return x + y
+
+@celery_app.task
+def multiply(x, y):
+    time.sleep(10)
+    return x * y
+
+@celery_app.task
+def finalize(result):
+    return f"[RESULT]: {result}"
 

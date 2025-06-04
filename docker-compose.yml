@@ -19,8 +19,19 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+  flower:
+    build: .
+    container_name: celery_flower
+    command: celery -A tasks.celery_app flower --port=5555
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    ports:
+      - "5555:5555"
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     container_name: redis
     ports:
       - "6379:6379" 
