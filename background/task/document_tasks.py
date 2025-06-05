@@ -1,4 +1,4 @@
-from tasks import celery_app
+from background.celery import celery_app
 import os
 import time
 import json
@@ -173,7 +173,7 @@ def extract_text_advanced(self, file_path: str, resume_data: Dict = None):
         raise
 
 @celery_app.task(
-    bind=True,
+    bind=True, # 
     soft_time_limit=90,
     time_limit=120,
     autoretry_for=(Exception,),

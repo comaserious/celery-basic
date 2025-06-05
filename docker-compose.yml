@@ -15,7 +15,7 @@ services:
   worker:
     build: .
     container_name: celery_worker
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A background.celery.celery_app worker --loglevel=info --concurrency=2
     depends_on:
       - redis
     environment:
@@ -26,7 +26,7 @@ services:
   flower:
     build: .
     container_name: celery_flower
-    command: celery -A tasks.celery_app flower --port=5555
+    command: celery -A background.celery.celery_app flower --port=5555
     depends_on:
       - redis
     environment:

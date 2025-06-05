@@ -15,10 +15,10 @@ class AddRequest(BaseModel):
     x : int
     y: int
 
-from tasks import celery_app, add
+from background.celery import celery_app
+from background.task.test_tasks import add, multiply, finalize, show_request_info
 from celery import chain, group, chord
 from celery.result import GroupResult
-from tasks import add, multiply, finalize
 
 @app.post("/add")
 async def celery_add(req: AddRequest):
@@ -224,6 +224,17 @@ async def get_chord_result(chord_id: str):
         
     except Exception as e:
         return {"error": f"Failed to get chord result: {str(e)}"}
+
+
+@app.post("/test-request-info")
+async def test_request_info(message: str = "Hello World"):
+    """self.request 정보 테스트용 엔드포인트"""
+    task = show_request_info.delay(message)
+    return {
+        "message": "Request info test started",
+        "task_id": task.id,
+        "check_result": f"/result/{task.id}"
+    }
 
 
 if __name__ == "__main__":

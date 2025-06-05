@@ -10,13 +10,15 @@ logger = logging.getLogger(__name__)
 
 document_router = APIRouter(prefix="/document")
 
-from document_tasks import (
+from background.task.document_tasks import (
     split_document, 
     process_document_pipeline_advanced, 
     get_pipeline_progress,
     get_notification_history
 )
-from tasks import celery_app
+
+
+from background.celery import celery_app
 
 @document_router.post("/learn_file")
 async def learn_file(
