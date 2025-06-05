@@ -8,9 +8,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-document_router = APIRouter(prefix="/document")
+sample_router = APIRouter(prefix="/document")
 
-from background.task.document_tasks import (
+from background.task.sample_tasks import (
     split_document, 
     process_document_pipeline_advanced, 
     get_pipeline_progress,
@@ -20,7 +20,7 @@ from background.task.document_tasks import (
 
 from background.celery import celery_app
 
-@document_router.post("/learn_file")
+@sample_router.post("/learn_file")
 async def learn_file(
     user_id : str = Form(...),
     file : UploadFile = File(...),
@@ -69,7 +69,7 @@ async def learn_file(
         logger.error(f"파일 업로드 중 오류 발생: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
     
-@document_router.get("/get_result/{task_id}")
+@sample_router.get("/get_result/{task_id}")
 async def get_result(task_id : str):
     try:
         result = celery_app.AsyncResult(task_id)
@@ -85,7 +85,7 @@ async def get_result(task_id : str):
     except Exception as e:
         raise e
 
-@document_router.post("/process_pipeline")
+@sample_router.post("/process_pipeline")
 async def process_document_with_pipeline(
     user_id: str = Form(...),
     file: UploadFile = File(...),
@@ -141,7 +141,7 @@ async def process_document_with_pipeline(
         logger.error(f"파이프라인 처리 중 오류 발생: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@document_router.post("/process_advanced")
+@sample_router.post("/process_advanced")
 async def process_document_advanced(
     user_id: str = Form(...),
     file: UploadFile = File(...),
@@ -191,7 +191,7 @@ async def process_document_advanced(
         logger.error(f"고급 파이프라인 처리 중 오류 발생: {str(e)}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@document_router.get("/progress/{task_id}")
+@sample_router.get("/progress/{task_id}")
 async def get_progress(task_id: str):
     """실시간 진행률 추적"""
     try:
@@ -200,7 +200,7 @@ async def get_progress(task_id: str):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@document_router.get("/notifications/{task_id}")
+@sample_router.get("/notifications/{task_id}")
 async def get_notifications(task_id: str):
     """알림 히스토리 조회"""
     try:
@@ -213,7 +213,7 @@ async def get_notifications(task_id: str):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@document_router.get("/status/{task_id}")
+@sample_router.get("/status/{task_id}")
 async def get_comprehensive_status(task_id: str):
     """종합 상태 조회 (진행률 + 알림 + 결과)"""
     try:

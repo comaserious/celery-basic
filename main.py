@@ -3,8 +3,8 @@ from typing import List, Optional
 
 app = FastAPI()
 
-from document_app import document_router
-routers = [document_router]
+from sample_app import sample_router
+routers = [sample_router]
 
 for router in routers:
     app.include_router(router)
