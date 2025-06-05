@@ -10,15 +10,19 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./data:/app/data
   worker:
     build: .
     container_name: celery_worker
-    command: celery -A tasks.celery_app worker --loglevel=info
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
     depends_on:
       - redis
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./data:/app/data
   flower:
     build: .
     container_name: celery_flower
