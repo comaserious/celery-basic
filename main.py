@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query, HTTPException, UploadFile, File
 from typing import List, Optional
 import json
 
-app = FastAPI()
+app = FastAPI(title="Celery Test Harder", description="분산 작업 처리 시스템")
 
 from sample_app import sample_router
 routers = [sample_router]
@@ -17,12 +17,14 @@ class AddRequest(BaseModel):
     y: int
 
 from background.celery import celery_app
-from background.task.test_tasks import add, multiply, finalize, show_request_info
+from background.task.test_tasks import (
+    add, multiply, finalize, show_request_info,
+    process_user_batch, send_email_campaign, generate_report_chunk,
+    start_large_user_processing, start_bulk_email_campaign
+)
+from background.task.document_tasks import process_document, process_document_batch
 from celery import chain, group, chord
 from celery.result import GroupResult
-from background.task.test_tasks import process_user_batch, send_email_campaign, generate_report_chunk
-from background.task.test_tasks import start_large_user_processing, start_bulk_email_campaign
-from background.task.document_tasks import process_document, process_document_with_cache, process_document_advanced
 
 @app.post("/add")
 async def celery_add(req: AddRequest):
@@ -259,6 +261,13 @@ class BulkEmailRequest(BaseModel):
     all_emails: List[str]
     template_id: str
 
+class DocumentRequest(BaseModel):
+    file_path: str
+    operation: str = "analyze"
+
+class DocumentBatchRequest(BaseModel):
+    file_paths: List[str]
+
 # ===== 새로운 실무 적정 크기 Task 엔드포인트들 =====
 
 @app.post("/process-user-batch")
@@ -299,6 +308,32 @@ async def generate_report_chunk_endpoint(request: ReportRequest):
         "message": f"리포트 청크 {request.chunk_id} 생성 시작",
         "date_range": request.date_range,
         "estimated_time": "3-4분",
+        "status": "PENDING"
+    }
+
+@app.post("/process-document")
+async def process_document_endpoint(request: DocumentRequest):
+    """✅ 적정 크기: 단일 문서 처리 (3-5분 소요)"""
+    task = process_document.delay(request.file_path, request.operation)
+    return {
+        "task_id": task.id,
+        "message": f"문서 처리 시작: {request.file_path}",
+        "operation": request.operation,
+        "estimated_time": "3-5분",
+        "status": "PENDING"
+    }
+
+@app.post("/process-document-batch")
+async def process_document_batch_endpoint(request: DocumentBatchRequest):
+    """✅ 적정 크기: 문서 배치 처리 (최대 10개, 2-3분 소요)"""
+    if len(request.file_paths) > 10:
+        raise HTTPException(status_code=400, detail="배치 크기는 10개 파일을 초과할 수 없습니다")
+    
+    task = process_document_batch.delay(request.file_paths)
+    return {
+        "task_id": task.id,
+        "message": f"{len(request.file_paths)}개 문서 배치 처리 시작",
+        "estimated_time": "2-3분",
         "status": "PENDING"
     }
 
@@ -351,7 +386,6 @@ async def get_batch_status(task_ids: str):
     
     for task_id in task_id_list:
         try:
-            from background.celery import celery_app
             result = celery_app.AsyncResult(task_id.strip())
             
             batch_status.append({
@@ -382,6 +416,43 @@ async def get_batch_status(task_ids: str):
         },
         "task_details": batch_status
     }
+
+# ===== 헬스체크 및 정보 엔드포인트 =====
+
+@app.get("/")
+async def root():
+    """API 루트 엔드포인트"""
+    return {
+        "message": "🚀 Celery Test Harder API",
+        "status": "active",
+        "docs": "/docs",
+        "endpoints": {
+            "basic_tasks": ["/add", "/chain", "/group", "/chord"],
+            "results": ["/result/{task_id}", "/chain-result/{task_id}", "/group-result/{group_id}", "/chord-result/{chord_id}"],
+            "advanced_tasks": ["/process-user-batch", "/send-email-campaign", "/generate-report-chunk", "/process-document", "/process-document-batch"],
+            "bulk_operations": ["/bulk-user-processing", "/bulk-email-campaign"],
+            "monitoring": ["/batch-status/{task_ids}", "/test-request-info"]
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    """헬스체크 엔드포인트"""
+    try:
+        # Celery 연결 상태 확인
+        inspect = celery_app.control.inspect()
+        workers = inspect.active()
+        
+        return {
+            "status": "healthy",
+            "celery_workers": len(workers) if workers else 0,
+            "redis_connection": "connected"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
 if __name__ == "__main__":
     import uvicorn
