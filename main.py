@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File
 from typing import List, Optional
+import json
 
 app = FastAPI()
 
@@ -19,6 +20,9 @@ from background.celery import celery_app
 from background.task.test_tasks import add, multiply, finalize, show_request_info
 from celery import chain, group, chord
 from celery.result import GroupResult
+from background.task.test_tasks import process_user_batch, send_email_campaign, generate_report_chunk
+from background.task.test_tasks import start_large_user_processing, start_bulk_email_campaign
+from background.task.document_tasks import process_document, process_document_with_cache, process_document_advanced
 
 @app.post("/add")
 async def celery_add(req: AddRequest):
@@ -236,6 +240,148 @@ async def test_request_info(message: str = "Hello World"):
         "check_result": f"/result/{task.id}"
     }
 
+# 새로운 Request 모델들
+class UserBatchRequest(BaseModel):
+    user_ids: List[int]
+
+class EmailCampaignRequest(BaseModel):
+    email_list: List[str]
+    template_id: str
+
+class ReportRequest(BaseModel):
+    date_range: dict
+    chunk_id: int
+
+class BulkUserRequest(BaseModel):
+    all_user_ids: List[int]
+
+class BulkEmailRequest(BaseModel):
+    all_emails: List[str]
+    template_id: str
+
+# ===== 새로운 실무 적정 크기 Task 엔드포인트들 =====
+
+@app.post("/process-user-batch")
+async def process_user_batch_endpoint(request: UserBatchRequest):
+    """✅ 적정 크기: 사용자 배치 처리 (100명 이하, 2-3분 소요)"""
+    if len(request.user_ids) > 100:
+        raise HTTPException(status_code=400, detail="배치 크기는 100을 초과할 수 없습니다")
+    
+    task = process_user_batch.delay(request.user_ids)
+    return {
+        "task_id": task.id,
+        "message": f"{len(request.user_ids)}명 사용자 배치 처리 시작",
+        "estimated_time": "2-3분",
+        "status": "PENDING"
+    }
+
+@app.post("/send-email-campaign")
+async def send_email_campaign_endpoint(request: EmailCampaignRequest):
+    """✅ 적정 크기: 이메일 캠페인 발송 (200개 이하, 3-5분 소요)"""
+    if len(request.email_list) > 200:
+        raise HTTPException(status_code=400, detail="이메일 배치 크기는 200을 초과할 수 없습니다")
+    
+    task = send_email_campaign.delay(request.email_list, request.template_id)
+    return {
+        "task_id": task.id,
+        "message": f"{len(request.email_list)}개 이메일 발송 시작",
+        "template_id": request.template_id,
+        "estimated_time": "3-5분",
+        "status": "PENDING"
+    }
+
+@app.post("/generate-report-chunk")
+async def generate_report_chunk_endpoint(request: ReportRequest):
+    """✅ 적정 크기: 리포트 청크 생성 (3-4분 소요)"""
+    task = generate_report_chunk.delay(request.date_range, request.chunk_id)
+    return {
+        "task_id": task.id,
+        "message": f"리포트 청크 {request.chunk_id} 생성 시작",
+        "date_range": request.date_range,
+        "estimated_time": "3-4분",
+        "status": "PENDING"
+    }
+
+# ===== 대용량 작업 분할 처리 엔드포인트들 =====
+
+@app.post("/bulk-user-processing")
+async def bulk_user_processing_endpoint(request: BulkUserRequest):
+    """대용량 사용자 처리를 적절한 크기로 분할하여 실행"""
+    total_users = len(request.all_user_ids)
+    batch_size = 100
+    expected_batches = (total_users + batch_size - 1) // batch_size  # 올림 계산
+    
+    task_ids = start_large_user_processing(request.all_user_ids)
+    
+    return {
+        "message": f"총 {total_users}명을 {expected_batches}개 배치로 분할하여 처리 시작",
+        "total_users": total_users,
+        "batch_size": batch_size,
+        "batch_count": expected_batches,
+        "task_ids": task_ids,
+        "estimated_total_time": f"{expected_batches * 3}분 (병렬 처리 시 최대 3분)"
+    }
+
+@app.post("/bulk-email-campaign")
+async def bulk_email_campaign_endpoint(request: BulkEmailRequest):
+    """대용량 이메일을 적절한 크기로 분할하여 발송"""
+    total_emails = len(request.all_emails)
+    batch_size = 200
+    expected_batches = (total_emails + batch_size - 1) // batch_size
+    
+    task_ids = start_bulk_email_campaign(request.all_emails, request.template_id)
+    
+    return {
+        "message": f"총 {total_emails}개 이메일을 {expected_batches}개 배치로 분할하여 발송 시작",
+        "total_emails": total_emails,
+        "batch_size": batch_size,
+        "batch_count": expected_batches,
+        "template_id": request.template_id,
+        "task_ids": task_ids,
+        "estimated_total_time": f"{expected_batches * 5}분 (병렬 처리 시 최대 5분)"
+    }
+
+# ===== 배치 상태 조회 엔드포인트 =====
+
+@app.get("/batch-status/{task_ids}")
+async def get_batch_status(task_ids: str):
+    """여러 배치 작업의 상태를 한번에 조회"""
+    task_id_list = task_ids.split(",")
+    batch_status = []
+    
+    for task_id in task_id_list:
+        try:
+            from background.celery import celery_app
+            result = celery_app.AsyncResult(task_id.strip())
+            
+            batch_status.append({
+                "task_id": task_id.strip(),
+                "status": result.status,
+                "result": result.result if result.ready() else None,
+                "ready": result.ready()
+            })
+        except Exception as e:
+            batch_status.append({
+                "task_id": task_id.strip(),
+                "status": "ERROR",
+                "error": str(e),
+                "ready": False
+            })
+    
+    # 전체 배치 상태 요약
+    total_tasks = len(batch_status)
+    completed_tasks = sum(1 for task in batch_status if task.get("ready", False))
+    pending_tasks = total_tasks - completed_tasks
+    
+    return {
+        "batch_summary": {
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "pending_tasks": pending_tasks,
+            "completion_rate": f"{(completed_tasks / total_tasks * 100):.1f}%" if total_tasks > 0 else "0%"
+        },
+        "task_details": batch_status
+    }
 
 if __name__ == "__main__":
     import uvicorn

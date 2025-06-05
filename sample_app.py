@@ -8,7 +8,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-sample_router = APIRouter(prefix="/document")
+sample_router = APIRouter(prefix="/sample")
 
 from background.task.sample_tasks import (
     split_document, 
