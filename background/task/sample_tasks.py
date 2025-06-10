@@ -88,7 +88,8 @@ def send_notification(task_id: str, step: str, status: str, message: str, data: 
     bind=True,
     soft_time_limit=120,  # 2분 소프트 타임아웃
     time_limit=180,       # 3분 하드 타임아웃
-    autoretry_for=(Exception,),
+    autoretry_for=(Exception,), # 예외 타입을 작성하면 됨
+    # dont_autoretry_for=(FileNotFoundError,), # 예외 타입을 작성하면 됨
     retry_kwargs={'max_retries': 3, 'countdown': 60}
 )
 def extract_text_advanced(self, file_path: str, resume_data: Dict = None):
