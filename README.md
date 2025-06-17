@@ -346,3 +346,6 @@ def monitored_task(self, data):
 5. **⚡ 실패 격리**: 한 Task 실패가 전체 파이프라인에 영향 주지 않도록
 
 ---
+
+재시작 
+docker-compose restart worker

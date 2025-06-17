@@ -12,6 +12,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
     volumes:
       - ./data:/app/data
+      - .:/app
   worker:
     build: .
     container_name: celery_worker
@@ -23,6 +24,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
     volumes:
       - ./data:/app/data
+      - .:/app
   flower:
     build: .
     container_name: celery_flower
@@ -34,6 +36,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
     ports:
       - "5555:5555"
+    volumes:
+      - .:/app
   redis:
     image: redis/redis-stack-server:latest
     container_name: redis
